@@ -41,14 +41,23 @@ def main() -> None:
     p.add_argument("models", nargs="+")
     p.add_argument("--runs", type=int, default=3)
     p.add_argument("--out", type=Path, default=REPO / "bench" / "out")
+    p.add_argument("--voice", help="voice folder name under voices/ (default: the first one)")
     args = p.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
     from mlx_audio.tts import load
 
-    voice = scan_voices(REPO / "voices")["my-voice"]
+    voices = scan_voices(REPO / "voices")
+    if not voices:
+        raise SystemExit("no voices found in voices/")
+    name = args.voice or sorted(voices)[0]
+    if name not in voices:
+        raise SystemExit(f"voice {name!r} not found; have: {', '.join(sorted(voices))}")
+    voice = voices[name]
     table: dict[str, list[tuple[float, float, float]]] = {}
+    peaks: dict[str, float] = {}
     for repo in args.models:
+        mx.reset_peak_memory()
         model = install_reference_cache(load(repo))
         tag = Path(repo).name
         generate(model, voice, "Warming up.", seed=0)
@@ -65,6 +74,7 @@ def main() -> None:
                 )
             )
         table[tag] = rows
+        peaks[tag] = mx.get_peak_memory() / 1e9
         del model
         mx.clear_cache()
 
@@ -76,6 +86,7 @@ def main() -> None:
     overall = {t: statistics.median(r[2] for r in table[t]) for t in tags}
     base = overall[tags[0]]
     print("median RTF | | " + " | ".join(f"{overall[t]:.3f} ({base / overall[t]:.2f}x vs {tags[0]})" for t in tags))
+    print("peak GB | | " + " | ".join(f"{peaks[t]:.1f}" for t in tags))
 
 if __name__ == "__main__":
     main()

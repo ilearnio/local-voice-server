@@ -4,9 +4,9 @@ A local text-to-speech server for [OpenBot](https://github.com/nightly-labs/open
 of the OpenAI speech API. It speaks in cloned voices on your Mac.
 
 - **Streaming:** `response_format: "pcm"` streams audio while it is generated. The first audio
-  arrives in about 0.12 s on an M5 Max.
+  arrives in about 0.14 s on an M5 Max, also with the full-precision model.
 - **Pluggable models:** the first adapter runs [Breeze TTS 2](https://huggingface.co/BreezeBlue/Breeze-TTS-2)
-  on the Apple silicon GPU through MLX (`mlx-audio` 0.6.7), using a locally made 5-bit model.
+  on the Apple silicon GPU through MLX (`mlx-audio` 0.6.7), at full precision (bf16).
 - **Voice folders:** each voice is a folder with a reference clip and its transcript.
 
 | Route | Returns |
@@ -19,19 +19,16 @@ It listens on `http://127.0.0.1:8880/v1` only, so it is not reachable from other
 
 ## Quick start (Apple silicon)
 
-Requirements: macOS on Apple silicon, [uv](https://docs.astral.sh/uv/), and about 12 GB of free disk
-space during setup (3.3 GB after).
+Requirements: macOS on Apple silicon with 32 GB of memory or more, [uv](https://docs.astral.sh/uv/),
+and about 8 GB of free disk space.
 
 ```bash
 git clone https://github.com/ilearnio/local-voice-server.git
 cd local-voice-server
 uv sync
 
-# 1. Make the 5-bit Breeze model (downloads 7.6 GB of full-precision MLX weights once).
+# 1. Download the Breeze model (7.6 GB, once).
 uv run hf download mlx-community/Breeze-TTS-2-mlx
-uv run python -m mlx_audio.convert \
-  --hf-path "$(ls -d ~/.cache/huggingface/hub/models--mlx-community--Breeze-TTS-2-mlx/snapshots/*/)" \
-  --mlx-path models/Breeze-TTS-2-mlx-5bit -q --q-bits 5 --q-group-size 64 --q-mode affine
 
 # 2. Add a voice: a clean 15–30 s clip of one speaker, plus its exact transcript.
 mkdir -p voices/my-voice
@@ -44,8 +41,12 @@ HF_HUB_OFFLINE=1 uv run local-voice-server
 scripts/install-launchagent.sh
 ```
 
-To skip the conversion, set `BREEZE_MODEL=mlx-community/Breeze-TTS-2-mlx-8bit` (4.6 GB, about 16%
-slower) and leave out `HF_HUB_OFFLINE=1` on the first run, so the weights can download.
+Why full precision: the audio streams, so a reply starts as soon as the first audio is ready. The
+model only has to stay ahead of playback, and the full-precision model does that with room to spare at
+normal speed. It sounds clearly better than the quantized builds.
+
+On a slower Mac, or to play replies faster than about 1.5x, use a quantized build instead, for example
+`BREEZE_MODEL=mlx-community/Breeze-TTS-2-mlx-8bit` (4.6 GB). Download it first with `uv run hf download`.
 
 Try it:
 
@@ -74,7 +75,7 @@ for a short answer or a long text. Older builds request WAV, which this server a
 | `VOICE_MODEL` | `breeze` | which adapter to load |
 | `VOICE_SERVER_PORT` | `8880` | port on 127.0.0.1 |
 | `VOICE_SERVER_VOICES_DIR` | `<repo>/voices` | voices folder |
-| `BREEZE_MODEL` | `<repo>/models/Breeze-TTS-2-mlx-5bit` | Breeze weights: a local folder or HF repo id |
+| `BREEZE_MODEL` | `mlx-community/Breeze-TTS-2-mlx` | Breeze weights: a local folder or HF repo id |
 
 ## Voices
 
@@ -113,13 +114,18 @@ Routes, voices, streaming, warm-up and the request queue need no changes.
 
 ## Performance (M5 Max, `bench/compare_models.py`)
 
-Median real-time factor (lower is faster):
+Median real-time factor: the time to make the audio divided by its length (lower is faster). Streamed
+playback runs out of audio when this is more than 1 divided by the playback speed.
 
-| Model | Real-time factor |
-|---|---|
-| 8-bit | 0.342 |
-| 5-bit (default) | 0.295 |
-| 4-bit | 0.275 |
+| Model | Real-time factor | Long reply (885 characters) | Peak memory |
+|---|---|---|---|
+| bf16 (default) | 0.480 | 0.49–0.64 | 15.4 GB |
+| 8-bit | 0.342 | | |
+| 5-bit (local conversion) | 0.288 | 0.33 | 7.9 GB |
+| 4-bit (local conversion) | 0.275 | | |
+
+A local conversion is `uv run python -m mlx_audio.convert --hf-path <bf16 snapshot folder>
+--mlx-path models/<name> -q --q-bits 5 --q-group-size 64 --q-mode affine`.
 
 The server caches each voice's reference encoding. This changes no output and saves about 0.3 s
 per request.

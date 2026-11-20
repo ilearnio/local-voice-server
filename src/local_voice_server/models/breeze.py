@@ -1,7 +1,7 @@
 """Breeze TTS 2 (BreezeBlue) on Apple Silicon through mlx-audio.
 
-Weights: a local 5-bit affine (group 64) conversion of `mlx-community/Breeze-TTS-2-mlx`, made with
-`python -m mlx_audio.convert -q --q-bits 5 --q-group-size 64 --q-mode affine` (see README).
+Weights: the full-precision (bf16) MLX build `mlx-community/Breeze-TTS-2-mlx`. Streaming hides the
+generation speed, so quantized builds only trade quality for speed that is not needed at 1x playback.
 Override with env `BREEZE_MODEL` (a local folder or a Hugging Face repo id).
 """
 
@@ -20,7 +20,7 @@ from ..voices import Voice
 logger = logging.getLogger(__name__)
 
 MODEL_ID = "breeze-tts-2"
-DEFAULT_WEIGHTS = str(Path(__file__).resolve().parents[3] / "models" / "Breeze-TTS-2-mlx-5bit")
+DEFAULT_WEIGHTS = "mlx-community/Breeze-TTS-2-mlx"
 # Seconds of audio per streamed chunk; mlx-audio decodes this much codec output at a time.
 STREAM_INTERVAL_SECONDS = 0.16
 FALLBACK_SAMPLE_RATE = 24_000
