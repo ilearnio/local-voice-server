@@ -1,0 +1,31 @@
+[project]
+name = "local-voice-server"
+version = "0.1.0"
+description = "Local OpenAI-compatible voice server for OpenBot, with pluggable TTS models (Breeze TTS 2 on MLX first)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "mlx-audio[tts]==0.6.7",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
+
+[project.scripts]
+local-voice-server = "local_voice_server.server:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "soundfile>=0.14.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/local_voice_server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: loads the real model (set VOICE_SERVER_SLOW=1)"]
